@@ -344,184 +344,210 @@ button:hover {
       { name: "妄想型",    desc: "誰も信じられない" }
     ];
 
-    // ─── 用來儲存每題答案的陣列（index = 問題編號），初始為 null ──────────
+    // ――― 4. 各質問の回答を格納する配列（インデックス＝質問番号）、初期値は null ―――
     const selectedAnswers = Array(questions.length).fill(null);
+    // 表示使用者是否至少按過一次提交（calculateScore）：
+    let submissionAttempted = false;
+    /**
+     * renderQuestions():
+     *   body の onload 時に呼ばれ、90問を #questionsContainer に動的に挿入
+     *   各質問 <div> には id="question-<index>" を付与しておく
+     */
+    function renderQuestions() {
+      const container = document.getElementById("questionsContainer");
+      container.innerHTML = "";  // 既存の内容をクリア
 
-  /**
-   * renderQuestions():
-   *   body の onload 時に呼び出され、90 問を <div id="questionsContainer"> に動的に挿入
-   */
-  function renderQuestions() {
-    const container = document.getElementById("questionsContainer");
-    container.innerHTML = "";  // 既存の内容をクリア
+      questions.forEach((q, i) => {
+        const div = document.createElement("div");
+        div.className = "question";
+        div.id = `question-${i}`;  // スクロール対象として使う
 
-    questions.forEach((q, i) => {
-      const div = document.createElement("div");
-      div.className = "question";
-      div.id = `question-${i}`;  // スクロール対象にするために ID を付与
+        // ラジオの代わりにボタンを4つ表示
+        const buttonsHTML = optionLabels.map((label, idx) => `
+          <div class="likert-btn"
+               data-question="${i}"
+               data-value="${optionValues[idx]}"
+               onclick="selectOption(${i}, ${idx})">
+            ${label}
+          </div>
+        `).join("");
 
-      // optionLabels をボタンとして表示
-      const buttonsHTML = optionLabels.map((label, idx) => `
-        <div class="likert-btn"
-             data-question="${i}"
-             data-value="${optionValues[idx]}"
-             onclick="selectOption(${i}, ${idx})">
-          ${label}
-        </div>
-      `).join("");
+        div.innerHTML = `
+          <strong>Q${i + 1}：</strong> ${q}
+          <div class="button-group" id="group-${i}">
+            ${buttonsHTML}
+          </div>
+          <input type="hidden" name="q${i}" id="q${i}" value="" />
+        `;
+        container.appendChild(div);
+      });
+    }
 
-      div.innerHTML = `
-        <strong>Q${i + 1}：</strong> ${q}
-        <div class="button-group" id="group-${i}">
-          ${buttonsHTML}
-        </div>
-        <input type="hidden" name="q${i}" id="q${i}" value="" />
-      `;
+    /**
+     * selectOption(qIdx, optIdx):
+     *   ユーザーがボタンをクリックしたときに呼ばれる：
+     *   1. その質問の他のボタンから .selected を削除
+     *   2. クリックされたボタンに .selected を付与
+     *   3. selectedAnswers 配列と隠し input にスコアを保存
+     *   4. 次の未回答質問があれば、その要素までスクロール
+     *   5. 未回答がなくなったら「送信ボタン」までスクロール
+     */
+    function selectOption(qIdx, optIdx) {
+      const group = document.getElementById(`group-${qIdx}`);
+      const buttons = group.querySelectorAll(".likert-btn");
 
-      container.appendChild(div);
-    });
-  }
+      // 移除其他按鈕的 .selected
+      buttons.forEach(btn => btn.classList.remove("selected"));
 
-  /**
-   * selectOption(qIdx, optIdx):
-   *   ユーザーがボタンをクリックしたときに呼ばれる:
-   *   1. 同じ質問の他のボタンから .selected を削除
-   *   2. クリックされたボタンに .selected を付与
-   *   3. selectedAnswers 配列および隠し input にスコアを保存
-   */
-  function selectOption(qIdx, optIdx) {
-    const group = document.getElementById(`group-${qIdx}`);
-    const buttons = group.querySelectorAll(".likert-btn");
+      // 讓被點擊的按鈕加上 .selected
+      const chosenBtn = buttons[optIdx];
+      chosenBtn.classList.add("selected");
 
-    // すべてのボタンから .selected を削除
-    buttons.forEach(btn => btn.classList.remove("selected"));
+      // 將分數存到 selectedAnswers，存到隱藏 input
+      const score = parseInt(chosenBtn.dataset.value, 10);
+      selectedAnswers[qIdx] = score;
+      document.getElementById(`q${qIdx}`).value = score;
 
-    // クリックされたボタンに .selected を付与
-    const chosenBtn = buttons[optIdx];
-    chosenBtn.classList.add("selected");
+      // ─── 只有當已經按過提交（submissionAttempted === true）才執行「自動找下一個未回答並捲動」 ───
+      if (submissionAttempted) {
+        let nextUnanswered = -1;
+        for (let i = qIdx + 1; i < questions.length; i++) {
+          if (selectedAnswers[i] === null) {
+            nextUnanswered = i;
+            break;
+          }
+        }
 
-    // スコアを selectedAnswers に保存し、隠し input の value にも設定
-    const score = parseInt(chosenBtn.dataset.value, 10);
-    selectedAnswers[qIdx] = score;
-    document.getElementById(`q${qIdx}`).value = score;
-  }
-
-  /**
-   * calculateScore():
-   *   1. 全質問に回答があるかチェックし、未回答があればその質問までスクロールして alert
-   *   2. 10 問ずつ 1 グループとして合計スコアを計算（全 9 グループ）
-   *   3. スコア順に並べ替え、上位・補助・その他のパーソナリティを表示
-   */
-  function calculateScore() {
-    // 1) 未回答の質問があれば、その最初のインデックスを取得
-    let firstUnanswered = -1;
-    for (let i = 0; i < questions.length; i++) {
-      if (selectedAnswers[i] === null) {
-        firstUnanswered = i;
-        break;
+        if (nextUnanswered !== -1) {
+          // 如果還有未答的，捲動到那一題
+          document.getElementById(`question-${nextUnanswered}`).scrollIntoView({
+            behavior: "smooth",
+            block: "center"
+          });
+        } else {
+          // 如果已經全部答完，捲動到提交按鈕
+          const submitBtn = document.querySelector('button[type="button"]');
+          submitBtn.scrollIntoView({
+            behavior: "smooth",
+            block: "center"
+          });
+        }
       }
     }
+    function calculateScore() {
+      // 先找出所有還沒填的題目 index
+      const unansweredIndices = [];
+      for (let i = 0; i < questions.length; i++) {
+        if (selectedAnswers[i] === null) {
+          unansweredIndices.push(i);
+        }
+      }
 
-    // 未回答がある場合、該当の質問までスクロールしてアラートを表示し処理を終了
-    if (firstUnanswered !== -1) {
-      const targetDiv = document.getElementById(`question-${firstUnanswered}`);
-      targetDiv.scrollIntoView({
-        behavior: "smooth",
-        block: "center"
+      // 如果有未回答
+      if (unansweredIndices.length > 0) {
+        // 標示使用者已按過提交
+        submissionAttempted = true;
+
+        // 捲到最小 index 的那一題
+        const firstUnanswered = unansweredIndices[0];
+        document.getElementById(`question-${firstUnanswered}`).scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
+        alert(`請先回答第 ${firstUnanswered + 1} 題。`);
+        return; // 不繼續計算分數
+      }
+
+      // 2) すべて回答済みなので、10 問ごとに集計（全 9 グループ）
+      const scores = new Array(9).fill(0);
+      for (let i = 0; i < questions.length; i++) {
+        const groupIndex = Math.floor(i / 10);
+        scores[groupIndex] += selectedAnswers[i];
+      }
+
+      // 3) 結果オブジェクト { name, desc, score } を作成
+      const results = scores.map((score, idx) => ({
+        name: personalityMap[idx].name,
+        desc: personalityMap[idx].desc,
+        score
+      }));
+
+      // スコア 0 は除外
+      const nonZeroResults = results.filter(r => r.score > 0);
+      // 降順ソート
+      nonZeroResults.sort((a, b) => b.score - a.score);
+
+      // 同じスコアをまとめる
+      const grouped = {};
+      nonZeroResults.forEach(r => {
+        if (!grouped[r.score]) grouped[r.score] = [];
+        grouped[r.score].push(r);
       });
-      alert(`${firstUnanswered + 1}番目の質問に回答してください`);
-      return;
+
+      // スコアキーを降順に取得
+      const scoreGroups = Object.keys(grouped)
+        .map(s => parseInt(s, 10))
+        .sort((a, b) => b - a);
+
+      // 主要／補助／その他 を分ける
+      const main = grouped[scoreGroups[0]] || [];
+      const secondary = scoreGroups.length > 1 ? grouped[scoreGroups[1]] : [];
+      const others = scoreGroups.slice(2).flatMap(s => grouped[s]);
+
+      // 4) 結果を描画
+      const resultDiv = document.getElementById("result");
+      resultDiv.innerHTML = `
+        <div class="result-block">
+          <strong>第一のパーソナリティ：</strong>
+          <ul>
+            ${main.map(r => `
+              <li>
+                <span class="personality-title">${r.name}：${r.score} 分</span>
+                <div class="personality-desc">${r.desc}</div>
+              </li>
+            `).join("")}
+          </ul>
+        </div>
+
+        ${secondary.length > 0 ? `
+        <div class="result-block">
+          <strong>補助的なパーソナリティ：</strong>
+          <ul>
+            ${secondary.map(r => `
+              <li>
+                <span class="personality-title">${r.name}：${r.score} 分</span>
+                <div class="personality-desc">${r.desc}</div>
+              </li>
+            `).join("")}
+          </ul>
+        </div>
+        ` : ""}
+
+        ${others.length > 0 ? `
+        <div class="result-block">
+          <strong>その他のパーソナリティ：</strong>
+          <ul>
+            ${others.map(r => `
+              <li>
+                <span class="personality-title">${r.name}：${r.score} 分</span>
+                <div class="personality-desc">${r.desc}</div>
+              </li>
+            `).join("")}
+          </ul>
+        </div>
+        ` : ""}
+
+        <div style="max-width: 800px; margin: 30px auto 0; font-size: 0.9rem; color: #666; line-height: 1.6;">
+          <strong>參考資料：</strong><br/>
+          <a href="https://www.amazon.co.jp/%E3%81%AA%E3%81%9C%E3%81%84%E3%81%A4%E3%82%82%E2%80%9C%E4%BC%BC%E3%81%9F%E3%82%88%E3%81%86%E3%81%AA%E4%BA%BA-%E3%82%92%E5%A5%BD%E3%81%8D%E3%81%AB%E3%81%AA%E3%82%8B%E3%81%AE%E3%81%8B-%E5%B2%A1%E7%94%B0%E5%B0%8A%E5%8F%B8/dp/4413039262">
+            なぜいつも似たような人を好きになるのか<br/>
+            作者：岡田尊司
+          </a>
+        </div>
+      `;
+      // 5) 結果ブロックまでスクロール
+      resultDiv.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-
-    // 2) すべて回答済みであれば、10 問ずつグループ化してスコアを集計（合計 9 グループ）
-    const scores = new Array(9).fill(0);
-    for (let i = 0; i < questions.length; i++) {
-      const groupIndex = Math.floor(i / 10);
-      scores[groupIndex] += selectedAnswers[i];
-    }
-
-    // 3) 結果オブジェクト配列を作成 { name, desc, score }
-    const results = scores.map((score, idx) => ({
-      name: personalityMap[idx].name,
-      desc: personalityMap[idx].desc,
-      score
-    }));
-
-    // スコア 0 のものを除外
-    const nonZeroResults = results.filter(r => r.score > 0);
-
-    // スコア順（降順）にソート
-    nonZeroResults.sort((a, b) => b.score - a.score);
-
-    // 同じスコアを持つものは同じグループにまとめる
-    const grouped = {};
-    nonZeroResults.forEach(r => {
-      if (!grouped[r.score]) grouped[r.score] = [];
-      grouped[r.score].push(r);
-    });
-
-    // スコアの降順リストを取得
-    const scoreGroups = Object.keys(grouped)
-      .map(s => parseInt(s, 10))
-      .sort((a, b) => b - a);
-
-    // メイン（1 位グループ）、サブ（2 位グループ）、その他
-    const main = grouped[scoreGroups[0]] || [];
-    const secondary = scoreGroups.length > 1 ? grouped[scoreGroups[1]] : [];
-    const others = scoreGroups.slice(2).flatMap(s => grouped[s]);
-
-    // 4) 結果を表示
-    const resultDiv = document.getElementById("result");
-    resultDiv.innerHTML = `
-      <div class="result-block">
-        <strong>第一のパーソナリティ：</strong>
-        <ul>
-          ${main.map(r => `
-            <li>
-              <span class="personality-title">${r.name}：${r.score} 分</span>
-              <div class="personality-desc">${r.desc}</div>
-            </li>
-          `).join("")}
-        </ul>
-      </div>
-
-      ${secondary.length > 0 ? `
-      <div class="result-block">
-        <strong>補助的なパーソナリティ：</strong>
-        <ul>
-          ${secondary.map(r => `
-            <li>
-              <span class="personality-title">${r.name}：${r.score} 分</span>
-              <div class="personality-desc">${r.desc}</div>
-            </li>
-          `).join("")}
-        </ul>
-      </div>
-      ` : ""}
-
-      ${others.length > 0 ? `
-      <div class="result-block">
-        <strong>その他のパーソナリティ：</strong>
-        <ul>
-          ${others.map(r => `
-            <li>
-              <span class="personality-title">${r.name}：${r.score} 分</span>
-              <div class="personality-desc">${r.desc}</div>
-            </li>
-          `).join("")}
-        </ul>
-      </div>
-      ` : ""}
-
-      <div style="max-width: 800px; margin: 30px auto 0; font-size: 0.9rem; color: #666; line-height: 1.6;">
-        <strong>參考資料：</strong><br/>
-        <a href="https://www.amazon.co.jp/%E3%81%AA%E3%81%9C%E3%81%84%E3%81%A4%E3%82%82%E2%80%9C%E4%BC%BC%E3%81%9F%E3%82%88%E3%81%86%E3%81%AA%E4%BA%BA-%E3%82%92%E5%A5%BD%E3%81%8D%E3%81%AB%E3%81%AA%E3%82%8B%E3%81%AE%E3%81%8B-%E5%B2%A1%E7%94%B0%E5%B0%8A%E5%8F%B8/dp/4413039262">
-          なぜいつも似たような人を好きになるのか<br/>
-          作者：岡田尊司
-        </a>
-      </div>
-    `;
-    // 5) 結果エリアまでスクロール
-    resultDiv.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-</script>
+  </script>
+</body>
+</html>
