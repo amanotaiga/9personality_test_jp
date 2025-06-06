@@ -69,33 +69,34 @@ h1 {
 }
 
 /* ===============================================================
-   6. 選項區塊樣式
+   6. Button Group 樣式 (取代原本的 radio 顯示)
    =============================================================== */
-.option-group {
-  margin-left: 20px;
-  margin-top: 10px;
+.button-group {
   display: flex;
+  justify-content: space-between;
+  margin-top: 12px;
+  gap: 8px;
   flex-wrap: wrap;
 }
-.option-group label {
-  background: #f1f5f9;
+.likert-btn {
+  flex: 1;
+  padding: 10px;
+  background-color: #e9ecef;
+  border: 1px solid #ccc;
   border-radius: 8px;
-  padding: 8px 12px;
-  margin-right: 12px;
-  margin-bottom: 8px;
+  text-align: center;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
-  display: flex;
-  align-items: center;
-  font-size: 0.95rem;
-  color: #434343;
+  transition: all 0.2s;
+  user-select: none;
 }
-.option-group label:hover {
-  background: #e2e8f0;
+.likert-btn:hover {
+  background-color: #dee2e6;
 }
-.option-group input[type="radio"] {
-  margin-right: 6px;
-  accent-color: #4c51bf; /* Chrome/Edge 皆可控制 radio 顏色 */
+.likert-btn.selected {
+  background-color: #4c6ef5;
+  color: #fff;
+  font-weight: bold;
+  border-color: #3b5bdb;
 }
 
 /* ===============================================================
@@ -174,9 +175,9 @@ button:hover {
   .question strong {
     font-size: 1rem;
   }
-  .option-group label {
+  .likert-btn {
     flex: 1 1 45%;
-    padding: 6px 10px;
+    padding: 8px;
     font-size: 0.9rem;
   }
   button {
@@ -193,7 +194,6 @@ button:hover {
     font-size: 0.9rem;
   }
 }
-
   </style>
 </head>
 <body onload="renderQuestions()">
@@ -201,8 +201,8 @@ button:hover {
 
   <p style="max-width: 800px; margin: 0 auto 30px; line-height: 1.8; font-size: 1rem; text-align: justify;">
     この簡易質問シートは、あなたのパーソナリティのタイプを知るためのものです。<br/>
-各質問に、よく当てはまる、当てはまる、どちらとも言えない、当てはまらない のいずれかで答えてください。<br/>
-現時点のあなたの気分や行動だけでなく、過去数年間、あなたがどんなふうに感じ、行動していたかを振り返りながら、もっとも当てはまるものを選んでください。<br/>
+    各質問に、よく当てはまる、当てはまる、どちらとも言えない、当てはまらない のいずれかで答えてください。<br/>
+    現時点のあなたの気分や行動だけでなく、過去数年間、あなたがどんなふうに感じ、行動していたかを振り返りながら、もっとも当てはまるものを選んでください。<br/>
   </p>
 
   <form id="quizForm">
@@ -327,7 +327,6 @@ button:hover {
       "自分のことを悪く言われているように思うことが、よくある。"
     ];
 
-
     // ─── 2. 四個選項分數 (非常符合=2、符合=1、不清楚&不符合=0) ───
     const optionLabels = ["よく当てはまる", "当てはまる", "どちらとも言えない", "当てはまらない"];
     const optionValues = [2, 1, 0, 0];
@@ -344,28 +343,65 @@ button:hover {
       { name: "アスペルガー型", desc: "自分の世界に熱中する" },
       { name: "妄想型",    desc: "誰も信じられない" }
     ];
+
+    // ─── 用來儲存每題答案的陣列（index = 問題編號），初始為 null ──────────
+    const selectedAnswers = Array(questions.length).fill(null);
+
     /**
      * renderQuestions():
      *   在 body onload 時呼叫，將 90 題動態填入 <div id="questionsContainer">
      */
     function renderQuestions() {
       const container = document.getElementById("questionsContainer");
-      container.innerHTML = "";  // 先清空
+      container.innerHTML = "";  // 清空
+
       questions.forEach((q, i) => {
         const div = document.createElement("div");
         div.className = "question";
+
+        // 將 optionLabels 做為按鈕呈現
+        const buttonsHTML = optionLabels.map((label, idx) => `
+          <div class="likert-btn" 
+               data-question="${i}" 
+               data-value="${optionValues[idx]}" 
+               onclick="selectOption(${i}, ${idx})">
+            ${label}
+          </div>
+        `).join("");
+
         div.innerHTML = `
           <strong>Q${i + 1}：</strong> ${q}
-          <div class="option-group">
-            ${optionLabels.map((label, idx) =>
-              `<label>
-                <input type="radio" name="q${i}" value="${optionValues[idx]}"> ${label}
-              </label>`
-            ).join("")}
+          <div class="button-group" id="group-${i}">
+            ${buttonsHTML}
           </div>
+          <input type="hidden" name="q${i}" id="q${i}" value="" />
         `;
+
         container.appendChild(div);
       });
+    }
+
+    /**
+     * selectOption(qIdx, optIdx):
+     *   當使用者點擊按鈕時，更新該題的選擇狀態：
+     *   1. 將同題所有按鈕的 selected 樣式移除
+     *   2. 針對被選的按鈕加上 selected 樣式
+     *   3. 更新 selectedAnswers 陣列 & 隱藏 input 的值
+     */
+    function selectOption(qIdx, optIdx) {
+      const group = document.getElementById(`group-${qIdx}`);
+      const buttons = group.querySelectorAll(".likert-btn");
+
+      // 移除其他按鈕的 .selected
+      buttons.forEach(btn => btn.classList.remove("selected"));
+
+      // 讓被點擊的按鈕加上 .selected
+      buttons[optIdx].classList.add("selected");
+
+      // 將分數存到 selectedAnswers，存到隱藏 input
+      const score = parseInt(buttons[optIdx].dataset.value, 10);
+      selectedAnswers[qIdx] = score;
+      document.getElementById(`q${qIdx}`).value = score;
     }
 
     /**
@@ -375,111 +411,102 @@ button:hover {
      *   3. 根據分數高低排序，取前三名，並顯示「類型名稱 + 簡介」
      */
     function calculateScore() {
-      const form = document.forms["quizForm"];
-      const scores = new Array(9).fill(0);
-      let incomplete = false;
-
-      // 1. 驗證：每一題是否都有勾選
+      // 先檢查是否每題都已經填寫
       for (let i = 0; i < questions.length; i++) {
-        const radios = form[`q${i}`];
-        let selected = false;
-
-        if (radios && radios.length) {
-          for (let r of radios) {
-            if (r.checked) {
-              selected = true;
-              // 把該題分數加到「第 floor(i/10) 組」
-              scores[Math.floor(i / 10)] += parseInt(r.value);
-              break;
-            }
-          }
-        }
-        if (!selected) {
+        if (selectedAnswers[i] === null) {
           alert(`請回答第 ${i + 1} 題`);
-          incomplete = true;
-          break;
+          return;
         }
       }
-      if (incomplete) return;
 
-      // 2. 構造九組結果 { name, desc, score }
+      // 計算每 10 題一組的總分，總共 9 組
+      const scores = new Array(9).fill(0);
+      for (let i = 0; i < questions.length; i++) {
+        const groupIndex = Math.floor(i / 10);
+        scores[groupIndex] += selectedAnswers[i];
+      }
+
+      // 構造結果物件陣列 { name, desc, score }
       const results = scores.map((score, idx) => ({
         name: personalityMap[idx].name,
         desc: personalityMap[idx].desc,
         score
       }));
 
-    // 過濾掉分數為 0 的人格
-    const nonZeroResults = results.filter(r => r.score > 0);
+      // 過濾掉分數為 0 的
+      const nonZeroResults = results.filter(r => r.score > 0);
 
-    // 分數由高到低排序
-    nonZeroResults.sort((a, b) => b.score - a.score);
+      // 按分數由高到低排序
+      nonZeroResults.sort((a, b) => b.score - a.score);
 
-    // 根據分數分組
-    const grouped = {};
-    nonZeroResults.forEach(r => {
-      if (!grouped[r.score]) grouped[r.score] = [];
-      grouped[r.score].push(r);
-    });
+      // 分數相同者歸為同一組
+      const grouped = {};
+      nonZeroResults.forEach(r => {
+        if (!grouped[r.score]) grouped[r.score] = [];
+        grouped[r.score].push(r);
+      });
 
-    // 取得依照分數遞減排序的 score 群組
-    const scoreGroups = Object.keys(grouped)
-      .map(score => parseInt(score))
-      .sort((a, b) => b - a);
+      // 取得由大到小排序過的「分數」清單
+      const scoreGroups = Object.keys(grouped)
+        .map(s => parseInt(s, 10))
+        .sort((a, b) => b - a);
 
-    // 分類
-    const main = grouped[scoreGroups[0]];
-    const secondary = scoreGroups.length > 1 ? grouped[scoreGroups[1]] : [];
-    const others = scoreGroups.slice(2).flatMap(score => grouped[score]);
+      // 第一名群組、第二名群組、其他群組
+      const main = grouped[scoreGroups[0]] || [];
+      const secondary = scoreGroups.length > 1 ? grouped[scoreGroups[1]] : [];
+      const others = scoreGroups.slice(2).flatMap(s => grouped[s]);
 
-    // 顯示
-    const resultDiv = document.getElementById("result");
-    resultDiv.innerHTML = `
-      <div class="result-block">
-        <strong>第一のパーソナリティ：</strong>
-        <ul>
-          ${main.map(r => `
-            <li>
-              <span class="personality-title">${r.name}：${r.score} 分</span>
-              <div class="personality-desc">${r.desc}</div>
-            </li>
-          `).join("")}
-        </ul>
-      </div>
+      // 顯示結果
+      const resultDiv = document.getElementById("result");
+      resultDiv.innerHTML = `
+        <div class="result-block">
+          <strong>第一のパーソナリティ：</strong>
+          <ul>
+            ${main.map(r => `
+              <li>
+                <span class="personality-title">${r.name}：${r.score} 分</span>
+                <div class="personality-desc">${r.desc}</div>
+              </li>
+            `).join("")}
+          </ul>
+        </div>
 
-      ${secondary.length > 0 ? `
-      <div class="result-block">
-        <strong>補助的なパーソナリティ：</strong>
-        <ul>
-          ${secondary.map(r => `
-            <li>
-              <span class="personality-title">${r.name}：${r.score} 分</span>
-              <div class="personality-desc">${r.desc}</div>
-            </li>
-          `).join("")}
-        </ul>
-      </div>
-      ` : ""}
+        ${secondary.length > 0 ? `
+        <div class="result-block">
+          <strong>補助的なパーソナリティ：</strong>
+          <ul>
+            ${secondary.map(r => `
+              <li>
+                <span class="personality-title">${r.name}：${r.score} 分</span>
+                <div class="personality-desc">${r.desc}</div>
+              </li>
+            `).join("")}
+          </ul>
+        </div>
+        ` : ""}
 
-      ${others.length > 0 ? `
-      <div class="result-block">
-        <strong>その他のパーソナリティ：</strong>
-        <ul>
-          ${others.map(r => `
-            <li>
-              <span class="personality-title">${r.name}：${r.score} 分</span>
-              <div class="personality-desc">${r.desc}</div>
-            </li>
-          `).join("")}
-        </ul>
-      </div>
-      ` : ""}
-          <div style="max-width: 800px; margin: 30px auto 0; font-size: 0.9rem; color: #666; line-height: 1.6;">
-      <strong>參考資料：</strong><br/>
-      <a href="https://www.amazon.co.jp/%E3%81%AA%E3%81%9C%E3%81%84%E3%81%A4%E3%82%82%E2%80%9C%E4%BC%BC%E3%81%9F%E3%82%88%E3%81%86%E3%81%AA%E4%BA%BA-%E3%82%92%E5%A5%BD%E3%81%8D%E3%81%AB%E3%81%AA%E3%82%8B%E3%81%AE%E3%81%8B-%E5%B2%A1%E7%94%B0%E5%B0%8A%E5%8F%B8/dp/4413039262">なぜいつも似たような人を好きになるのか<br/>
-      作者：岡田尊司
-    </div>
-    `;
+        ${others.length > 0 ? `
+        <div class="result-block">
+          <strong>その他のパーソナリティ：</strong>
+          <ul>
+            ${others.map(r => `
+              <li>
+                <span class="personality-title">${r.name}：${r.score} 分</span>
+                <div class="personality-desc">${r.desc}</div>
+              </li>
+            `).join("")}
+          </ul>
+        </div>
+        ` : ""}
+
+        <div style="max-width: 800px; margin: 30px auto 0; font-size: 0.9rem; color: #666; line-height: 1.6;">
+          <strong>參考資料：</strong><br/>
+          <a href="https://www.amazon.co.jp/%E3%81%AA%E3%81%9C%E3%81%84%E3%81%A4%E3%82%82%E2%80%9C%E4%BC%BC%E3%81%9F%E3%82%88%E3%81%86%E3%81%AA%E4%BA%BA-%E3%82%92%E5%A5%BD%E3%81%8D%E3%81%AB%E3%81%AA%E3%82%8B%E3%81%AE%E3%81%8B-%E5%B2%A1%E7%94%B0%E5%B0%8A%E5%8F%B8/dp/4413039262">
+            なぜいつも似たような人を好きになるのか<br/>
+            作者：岡田尊司
+          </a>
+        </div>
+      `;
     }
   </script>
 </body>
